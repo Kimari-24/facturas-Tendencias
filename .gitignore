@@ -44,3 +44,6 @@ salida/
 
 .vercel
 .env*
+
+#Claude
+.CLAUDE.md
