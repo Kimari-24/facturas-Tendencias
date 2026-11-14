@@ -60,6 +60,26 @@ async function postJson<T>(url: string, body?: BodyInit): Promise<{ status: numb
   return { status: r.status, datos: (await r.json()) as T };
 }
 
+/**
+ * Vercel no acepta peticiones de más de 4,5 MB (las fotos de celular suelen pesar 3–8 MB).
+ * Si la imagen pasa de 3,5 MB se reduce en el navegador a JPEG de máx. 2000 px, la resolución a la que
+ * se guarda y se lee de todos modos. Las más livianas se suben tal cual.
+ */
+const LIMITE_SUBIDA = 3.5 * 1024 * 1024;
+async function prepararParaSubir(archivo: File): Promise<Blob> {
+  if (archivo.size <= LIMITE_SUBIDA) return archivo;
+  const imagen = await createImageBitmap(archivo, { imageOrientation: "from-image" });
+  const escala = Math.min(1, 2000 / imagen.width);
+  const lienzo = document.createElement("canvas");
+  lienzo.width = Math.round(imagen.width * escala);
+  lienzo.height = Math.round(imagen.height * escala);
+  lienzo.getContext("2d")?.drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
+  imagen.close();
+  const blob = await new Promise<Blob | null>((ok) => lienzo.toBlob(ok, "image/jpeg", 0.9));
+  if (!blob) throw new Error("No se pudo reducir la imagen");
+  return blob;
+}
+
 /** Ejecuta `tarea` sobre cada índice con un máximo de `n` simultáneas. */
 async function enParalelo(total: number, n: number, tarea: (i: number) => Promise<void>): Promise<void> {
   let i = 0;
@@ -123,7 +143,16 @@ export function Motor() {
       const porHash = new Map<string, number>();
       await enParalelo(archivos.length, SUBIDAS_PARALELAS, async (i) => {
         cambiar(i, { estado: "subiendo" });
-        const r = await postJson<{ hash?: string; duplicada?: boolean; error?: string }>(`/api/procesos/${datos.id}/imagenes`, archivos[i]);
+        // Un fallo de una imagen (red, archivo enorme) no detiene el lote: se marca y se sigue con las demás
+        type RespSubida = { hash?: string; duplicada?: boolean; error?: string };
+        let r: { status: number; datos: RespSubida };
+        try {
+          const cuerpo = await prepararParaSubir(archivos[i]);
+          const subir = (): Promise<{ status: number; datos: RespSubida }> => postJson<RespSubida>(`/api/procesos/${datos.id}/imagenes`, cuerpo);
+          r = await subir().catch(subir); // 1 reintento por si fue un corte de red
+        } catch (e) {
+          return cambiar(i, { estado: "rechazada", detalle: e instanceof Error && e.message.startsWith("Tu sesión") ? e.message : "No se pudo subir (conexión o archivo demasiado grande)" });
+        }
         if (r.status >= 400) return cambiar(i, { estado: "rechazada", detalle: r.datos.error ?? "No se pudo subir" });
         if (r.datos.duplicada) return cambiar(i, { estado: "duplicada", hash: r.datos.hash, detalle: "Esta imagen ya se había cargado antes" });
         porHash.set(r.datos.hash ?? "", i);
