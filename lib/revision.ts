@@ -136,7 +136,10 @@ export type ResultadoCorreccion = { guardada: true } | { guardada: false; motivo
  * y solo guarda con `forzar` (el humano asume la responsabilidad).
  */
 export async function corregirFactura(hash: string, email: string, c: Correccion): Promise<ResultadoCorreccion> {
-  await obtenerFactura(hash, email); // existencia + dueño
+  const actual = await obtenerFactura(hash, email); // existencia + dueño
+  // Si el OCR aún no termina, su resultado pisaría la corrección
+  if (actual.estado === "pendiente" || actual.estado === "procesando")
+    throw new ErrorHttp(409, "La factura aún se está procesando");
 
   const extraida = aExtraida(c);
   const nit = extraida.nitProveedor;

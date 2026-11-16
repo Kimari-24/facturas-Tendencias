@@ -188,7 +188,8 @@ export interface ResultadoLote {
 
 /** Procesa hasta `limite` facturas. El cliente repite la llamada mientras queden restantes. */
 export async function procesarLote(proceso: Proceso, limite = 2): Promise<ResultadoLote> {
-  if (proceso.estado === "finalizado") throw new ErrorHttp(409, "El proceso ya está finalizado");
+  // El cron pudo cerrarlo mientras el navegador seguía preguntando: no es un error, ya no queda nada
+  if (proceso.estado === "finalizado") return { procesadas: [], restantes: 0 };
   const sb = supabaseAdmin();
   if (proceso.estado === "subiendo") await sb.from("procesos").update({ estado: "procesando" }).eq("id", proceso.id);
 

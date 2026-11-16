@@ -164,9 +164,19 @@ export function Motor() {
       setFase("procesando");
       await Promise.all(
         Array.from({ length: TRABAJADORES }, async () => {
+          let fallos = 0;
           for (let vueltas = 0; vueltas < 300; vueltas++) {
-            const r = await postJson<{ procesadas: Leida[]; restantes: number }>(`/api/procesos/${datos.id}/lote`);
-            if (r.status >= 400) throw new Error("Falló el procesamiento");
+            // Un fallo puntual (red, arranque en frío) no tumba el lote: el cron sigue procesando en el servidor
+            const r = await postJson<{ procesadas: Leida[]; restantes: number }>(`/api/procesos/${datos.id}/lote`).catch((e: unknown) => {
+              if (e instanceof Error && e.message.startsWith("Tu sesión")) throw e;
+              return { status: 0, datos: { procesadas: [], restantes: -1 } };
+            });
+            if (r.status === 0 || r.status >= 400) {
+              if (++fallos >= 4) throw new Error("Falló el procesamiento");
+              await new Promise((ok) => setTimeout(ok, 3000));
+              continue;
+            }
+            fallos = 0;
             for (const l of r.datos.procesadas) {
               const i = porHash.get(l.hash);
               if (i !== undefined) cambiar(i, { estado: l.estado, numero: l.numero, proveedor: l.proveedor, total: l.total, detalle: l.motivo });
