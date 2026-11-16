@@ -2,8 +2,17 @@ import type { FacturaExtraida } from "./extractor";
 import { dvValido } from "./nit";
 
 export const TARIFA_IVA = 0.19;
-export const TARIFA_IMPOCONSUMO = 0.04; // según CLAUDE.md (restaurantes usan 8 %)
+/** Impoconsumo: 4 % (tarifa general) u 8 % (restaurantes, bares y similares). */
+export const TARIFAS_IMPOCONSUMO = [0.04, 0.08] as const;
 const TOLERANCIA = 1; // pesos, por redondeos
+
+/** Tarifa de impoconsumo más cercana al valor leído (para mostrar el cuadre en pantalla). */
+export function tarifaImpoconsumoCercana(subtotal: number, impoconsumo: number): number {
+  return TARIFAS_IMPOCONSUMO.reduce<number>(
+    (mejor, t) => (Math.abs(impoconsumo - subtotal * t) < Math.abs(impoconsumo - subtotal * mejor) ? t : mejor),
+    TARIFAS_IMPOCONSUMO[0],
+  );
+}
 
 export interface Validacion {
   estado: "ok" | "revision";
@@ -33,8 +42,9 @@ export function validarFactura(f: FacturaExtraida): Validacion {
     const soloImpoconsumo = inc > 0 && iva === 0; // restaurantes: el INC reemplaza al IVA
     if (!soloImpoconsumo && !cerca(iva, Math.round(f.subtotal * TARIFA_IVA)))
       motivos.push("IVA diferente a la tarifa general (19 %)");
-    if (inc > 0 && !cerca(inc, Math.round(f.subtotal * TARIFA_IMPOCONSUMO)))
-      motivos.push("Impoconsumo diferente a la tarifa (4 %)");
+    const subtotal = f.subtotal;
+    if (inc > 0 && !TARIFAS_IMPOCONSUMO.some((t) => cerca(inc, Math.round(subtotal * t))))
+      motivos.push("Impoconsumo diferente a las tarifas (4 % u 8 %)");
     if (!cerca(f.total, f.subtotal + iva + inc)) motivos.push("Total no coincide con subtotal + impuestos");
 
     if (f.items.length) {

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Item } from "./facturas/extractor";
 import { aExtraida, type CamposCorreccion } from "./facturas/correccion";
+import { MAX_MONTO } from "./facturas/numeros";
 import { validarFactura } from "./facturas/validador";
 import { ErrorHttp } from "./procesos";
 import { BUCKET, supabaseAdmin } from "./supabase-admin";
@@ -100,7 +101,8 @@ export function leerCorreccion(json: unknown): Correccion {
   const monto = (k: string): number | null => {
     const v = o[k];
     if (v === null || v === undefined || v === "") return null;
-    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) throw new ErrorHttp(400, `${k} debe ser un número ≥ 0`);
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > MAX_MONTO)
+      throw new ErrorHttp(400, `${k} debe ser un número entre 0 y ${MAX_MONTO}`);
     return Math.round(v * 100) / 100;
   };
   if (!Array.isArray(o.items)) throw new ErrorHttp(400, "items debe ser una lista");

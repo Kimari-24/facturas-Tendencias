@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { MAX_MONTO } from "./facturas/numeros";
 import { comprimirParaGuardar } from "./imagen";
 import { procesarImagen } from "./ocr/motor";
 import { BUCKET, supabaseAdmin } from "./supabase-admin";
@@ -129,6 +130,14 @@ async function guardarResultado(hash: string, ruta: string): Promise<Leida> {
   const motivos = [...r.validacion.motivos];
   let estado = r.validacion.estado;
 
+  // Un monto fuera de rango (ruido del OCR) desbordaría numeric(14,2) y dejaría la factura en "error" sin datos:
+  // se descarta ese monto y la factura va a revisión para corregirla a mano.
+  const montoValido = (v: number | null): number | null => (v !== null && Math.abs(v) <= MAX_MONTO ? v : null);
+  if ([f.subtotal, f.iva, f.impoconsumo, f.total].some((v) => v !== null && montoValido(v) === null)) {
+    motivos.push("Monto fuera de rango leído por el OCR");
+    estado = "revision";
+  }
+
   if (f.documentoCliente) {
     const { error } = await sb
       .from("clientes")
@@ -143,10 +152,10 @@ async function guardarResultado(hash: string, ruta: string): Promise<Leida> {
     proveedor: f.proveedor,
     nit_proveedor: f.nitProveedor ? `${f.nitProveedor.numero}${f.nitProveedor.dv === null ? "" : `-${f.nitProveedor.dv}`}` : null,
     documento_cliente: f.documentoCliente?.numero ?? null,
-    subtotal: f.subtotal,
-    iva: f.iva,
-    impoconsumo: f.impoconsumo,
-    total: f.total,
+    subtotal: montoValido(f.subtotal),
+    iva: montoValido(f.iva),
+    impoconsumo: montoValido(f.impoconsumo),
+    total: montoValido(f.total),
     items: f.items,
     motivos,
     texto_ocr: r.texto,
@@ -163,7 +172,7 @@ async function guardarResultado(hash: string, ruta: string): Promise<Leida> {
     ({ error } = await sb.from("facturas").update({ ...fila, estado, motivos, numero: null }).eq("hash", hash));
   }
   if (error) throw error;
-  return { hash, estado, numero, proveedor: f.proveedor, total: f.total, motivo: motivos[0] ?? null };
+  return { hash, estado, numero, proveedor: f.proveedor, total: montoValido(f.total), motivo: motivos[0] ?? null };
 }
 
 /** OCR + guardado de una factura ya reclamada; si algo falla la deja en "error" (no se reintenta en bucle). */

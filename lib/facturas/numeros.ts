@@ -1,3 +1,6 @@
+/** Mayor monto que cabe en las columnas numeric(14,2) de la base. Un valor mayor (casi siempre ruido del OCR) hace fallar el guardado. */
+export const MAX_MONTO = 999_999_999_999.99;
+
 /**
  * Convierte montos en formato colombiano o anglosajón a número.
  * "1.234.567,50" → 1234567.5 · "$ 1,234,567" → 1234567 · "19.000" → 19000 · "12,5" → 12.5

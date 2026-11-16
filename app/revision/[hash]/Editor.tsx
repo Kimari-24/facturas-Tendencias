@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, type ReactNode } from "react";
 import { aExtraida, campoDelMotivo, type CampoCorregible } from "@/lib/facturas/correccion";
 import type { Item } from "@/lib/facturas/extractor";
-import { TARIFA_IMPOCONSUMO, TARIFA_IVA, validarFactura } from "@/lib/facturas/validador";
+import { TARIFA_IVA, tarifaImpoconsumoCercana, validarFactura } from "@/lib/facturas/validador";
 import type { FacturaRevision } from "@/lib/revision";
 
 type Props = {
@@ -206,7 +206,13 @@ export function Editor({ factura: f, posicion, siguiente }: Props) {
                   texto={restaurante ? "IVA: no aplica (hay impoconsumo)" : `IVA 19 % del subtotal`}
                   valor={restaurante ? null : Math.round(sub * TARIFA_IVA)}
                 />
-                {inc > 0 && <Linea ok={!errores.has("impoconsumo")} texto="Impoconsumo 4 % del subtotal" valor={Math.round(sub * TARIFA_IMPOCONSUMO)} />}
+                {inc > 0 && (
+                  <Linea
+                    ok={!errores.has("impoconsumo")}
+                    texto={`Impoconsumo ${Math.round(tarifaImpoconsumoCercana(sub, inc) * 100)} % del subtotal`}
+                    valor={Math.round(sub * tarifaImpoconsumoCercana(sub, inc))}
+                  />
+                )}
                 <Linea ok={!errores.has("total") && !errores.has("subtotal")} texto="Subtotal + impuestos debe dar el total" valor={sub + iva + inc} />
                 {items.length > 0 && <Linea ok={!errores.has("items")} texto="Suma de ítems debe dar el subtotal" valor={sumaItems} />}
               </ul>
